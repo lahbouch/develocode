@@ -246,7 +246,8 @@ body {
   margin-top: 20px;
 }
 #social .social-icons .svg-icons img {
-  width: 23px;
+  width: 40px;
+  height: 40px;
   transition: transform 0.7s;
   margin-right: 1rem;
 }
