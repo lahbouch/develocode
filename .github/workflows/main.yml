@@ -1,0 +1,79 @@
+name: deploy-staging-full
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
+env:
+  SERVER_HOST: ${{ secrets.STAGING_SERVER_HOST }}
+  SERVER_USERNAME: ${{ secrets.STAGING_SERVER_USERNAME }}
+  SERVER_PASSWORD: ${{ secrets.STAGING_SERVER_PASSWORD }}
+
+jobs:
+  deploy_frontend:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: 8.2
+
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Install Frontend Dependencies
+      run: |
+        cd client
+        npm install -g pnpm
+        pnpm install
+
+    - name: Build frontend
+      run: |
+        cd client/.app
+        pnpm generate .app
+
+    - name: Install Server Dependencies
+      run: |
+        php -v
+        cd server
+        composer install --no-ansi --no-interaction --no-progress --prefer-dist --optimize-autoloader --no-dev
+        
+
+    - name: Synchronize client files with the server
+        run: >
+          rsync -avOc
+          -e "ssh -o StrictHostKeyChecking=no -o IdentityFile=/opt/github/actions-runner/.ssh/id_rsa -p 22
+          --delete
+          --delete-after
+          --exclude-from=.rsyncignore
+          --no-perms
+          $GITHUB_WORKSPACE/client/.output/public/
+          $DEPLOYMENT_SSH_USER@$SERVER_ADDRESS:$CLIENT_PATH
+
+    - name: Syncronize client files with staging server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.STAGING_SERVER_HOST }}
+        username: ${{ secrets.STAGING_SERVER_USERNAME }}
+        password: ${{ secrets.STAGING_SERVER_PASSWORD }}
+        script: |
+          rsync -avOc client/.app/.output/public sites/cch
+
+    - name: Syncronize server files with staging server
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.STAGING_SERVER_HOST }}
+        username: ${{ secrets.STAGING_SERVER_USERNAME }}
+        password: ${{ secrets.STAGING_SERVER_PASSWORD }}
+        script: |
+          rsync -avOc server sites/cch/api
+
+  
